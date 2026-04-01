@@ -1,0 +1,66 @@
+# Запуск: cp .env.example .env → задайте JWT_SECRET, ANTHROPIC_API_KEY, ENCRYPTION_KEY, INTERNAL_API_TOKEN → docker compose up -d
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: finagent_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: finagent
+      POSTGRES_USER: finagent_user
+      POSTGRES_PASSWORD: finagent_secret
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U finagent_user -d finagent"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  ai:
+    build:
+      context: ./financial-ai-agent
+    container_name: finagent_ai
+    restart: unless-stopped
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?set ANTHROPIC_API_KEY in .env}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-haiku-4-5-20251001}
+      AI_SERVICE_PORT: 8000
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:?set INTERNAL_API_TOKEN in .env}
+    expose:
+      - "8000"
+
+  backend:
+    build:
+      context: ./backend
+    container_name: finagent_backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://finagent_user:finagent_secret@postgres:5432/finagent?sslmode=disable
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+      APP_PORT: 8080
+      AI_SERVICE_URL: http://ai:8000
+      AI_INTERNAL_TOKEN: ${INTERNAL_API_TOKEN:?set INTERNAL_API_TOKEN in .env}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?set ENCRYPTION_KEY in .env}
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ai:
+        condition: service_started
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: finagent_frontend
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:80:80"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
