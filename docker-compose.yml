@@ -1,0 +1,33 @@
+version: "3.9"
+
+# docker-compose.yml — локальне середовище розробки для FinAgent.
+# Етап 1: лише база даних PostgreSQL.
+# Запуск: docker compose up -d
+
+services:
+  # -----------------------------------------------------------------------
+  # PostgreSQL — основна реляційна база даних додатку.
+  # Дані зберігаються у named volume, щоб не губитися при перезапуску.
+  # -----------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: finagent_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: finagent
+      POSTGRES_USER: finagent_user
+      POSTGRES_PASSWORD: finagent_secret
+    ports:
+      # Пробрасуємо 5433 → 5432, щоб не конфліктувати з локальним Postgres.
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U finagent_user -d finagent"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  # Named volume для персистентного зберігання даних PostgreSQL.
+  postgres_data:
