@@ -1,0 +1,22 @@
+[
+  {"id":  1, "message": "Скільки я витратив цього місяця?",                                 "expected_intent": "FINANCIAL"},
+  {"id":  2, "message": "Яка загальна сума витрат за червень?",                             "expected_intent": "FINANCIAL"},
+  {"id":  3, "message": "На що йде найбільше грошей?",                                      "expected_intent": "FINANCIAL"},
+  {"id":  4, "message": "Покажи прогрес моїх фінансових цілей",                             "expected_intent": "FINANCIAL"},
+  {"id":  5, "message": "Який мій баланс за останній місяць?",                              "expected_intent": "FINANCIAL"},
+  {"id":  6, "message": "Скільки мені потрібно ще відкласти на ціль Відпустка?",            "expected_intent": "FINANCIAL"},
+  {"id":  7, "message": "Які мої три найбільші витрати?",                                   "expected_intent": "FINANCIAL"},
+  {"id":  8, "message": "Чи можу я купити ноутбук за 30000 грн?",                           "expected_intent": "SCENARIO"},
+  {"id":  9, "message": "Що буде з балансом якщо витрачу 15000 на телефон?",                "expected_intent": "SCENARIO"},
+  {"id": 10, "message": "Якщо куплю велосипед за 8000 грн, скільки залишиться?",            "expected_intent": "SCENARIO"},
+  {"id": 11, "message": "Привіт, як справи?",                                               "expected_intent": "GENERAL"},
+  {"id": 12, "message": "Що таке ETF-фонд?",                                                "expected_intent": "GENERAL"},
+  {"id": 13, "message": "Порадь як заощадити більше грошей загалом",                        "expected_intent": "GENERAL"},
+  {"id": 14, "message": "Додай витрату 500 грн на каву сьогодні",                           "expected_intent": "ACTION"},
+  {"id": 15, "message": "Запиши дохід 15000 грн — зарплата",                                "expected_intent": "ACTION"},
+  {"id": 16, "message": "Видали транзакцію номер 7",                                        "expected_intent": "ACTION"},
+  {"id": 17, "message": "Створи нову ціль Відпустка на 20000 грн",                          "expected_intent": "ACTION"},
+  {"id": 18, "message": "Поповни ціль Відпустка на 1000 грн",                               "expected_intent": "ACTION"},
+  {"id": 19, "message": "Зніми 500 грн з цілі Машина",                                     "expected_intent": "ACTION"},
+  {"id": 20, "message": "Видали ціль Відпустка",                                            "expected_intent": "ACTION"}
+]

@@ -1,0 +1,62 @@
+[
+  {
+    "id": 1,
+    "message": "Додай витрату 500 грн на каву сьогодні",
+    "expected_action_type": "create_transaction",
+    "expected_fields": {"amount": 500, "transaction_type": "expense"}
+  },
+  {
+    "id": 2,
+    "message": "Запиши дохід 15000 грн — зарплата",
+    "expected_action_type": "create_transaction",
+    "expected_fields": {"amount": 15000, "transaction_type": "income"}
+  },
+  {
+    "id": 3,
+    "message": "Видали транзакцію 7",
+    "expected_action_type": "delete_transaction",
+    "expected_fields": {"transaction_id": 7}
+  },
+  {
+    "id": 4,
+    "message": "Створи ціль Відпустка на суму 20000 грн",
+    "expected_action_type": "create_goal",
+    "expected_fields": {"target_amount": 20000}
+  },
+  {
+    "id": 5,
+    "message": "Поклади 2000 грн на ціль Відпустка",
+    "expected_action_type": "contribute_goal",
+    "expected_fields": {"amount": 2000}
+  },
+  {
+    "id": 6,
+    "message": "Зніми 500 грн з цілі Машина",
+    "expected_action_type": "withdraw_goal",
+    "expected_fields": {"amount": 500}
+  },
+  {
+    "id": 7,
+    "message": "Видали ціль Відпустка",
+    "expected_action_type": "delete_goal",
+    "expected_fields": {}
+  },
+  {
+    "id": 8,
+    "message": "Додай витрату 1200 грн у категорію Їжа — продукти",
+    "expected_action_type": "create_transaction",
+    "expected_fields": {"amount": 1200, "transaction_type": "expense"}
+  },
+  {
+    "id": 9,
+    "message": "Запиши витрату 350 грн — похід до кіно",
+    "expected_action_type": "create_transaction",
+    "expected_fields": {"amount": 350, "transaction_type": "expense"}
+  },
+  {
+    "id": 10,
+    "message": "Поповни заощадження на машину на 3000 грн",
+    "expected_action_type": "contribute_goal",
+    "expected_fields": {"amount": 3000}
+  }
+]
