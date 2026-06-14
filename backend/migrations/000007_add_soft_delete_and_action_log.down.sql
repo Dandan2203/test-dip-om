@@ -1,0 +1,3 @@
+DROP TABLE IF EXISTS action_log;
+ALTER TABLE goals DROP COLUMN IF EXISTS deleted_at;
+ALTER TABLE transactions DROP COLUMN IF EXISTS deleted_at;

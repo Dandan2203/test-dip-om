@@ -1,0 +1,81 @@
+@import "tailwindcss";
+
+/* Зіставлення семантичних токенів з утилітами Tailwind (bg-background, text-primary тощо). */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--primary);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-soft: var(--primary-soft);
+  --color-positive: var(--positive);
+  --color-negative: var(--negative);
+  --color-sidebar: var(--sidebar);
+}
+
+/* Світла тема (за замовчуванням). */
+:root {
+  --background: #f4f5f7;
+  --foreground: #0f172a;
+  --card: #ffffff;
+  --card-foreground: #0f172a;
+  --muted: #eef1f5;
+  --muted-foreground: #64748b;
+  --border: #e3e8ef;
+  --input: #e3e8ef;
+  --sidebar: #ffffff;
+  --positive: #16a34a;
+  --negative: #dc2626;
+
+  /* Акцент за замовчуванням — індиго. */
+  --primary: #6366f1;
+  --primary-foreground: #ffffff;
+  --primary-soft: rgba(99, 102, 241, 0.12);
+}
+
+/* Темна тема. */
+.dark {
+  --background: #0b0f17;
+  --foreground: #e6edf6;
+  --card: #131927;
+  --card-foreground: #e6edf6;
+  --muted: #1b2333;
+  --muted-foreground: #94a3b8;
+  --border: #232c3d;
+  --input: #232c3d;
+  --sidebar: #0f1421;
+  --positive: #22c55e;
+  --negative: #f87171;
+}
+
+/* Пресети акцентного кольору (перемикаються в профілі). */
+[data-accent="violet"] { --primary: #8b5cf6; --primary-soft: rgba(139, 92, 246, 0.12); }
+[data-accent="emerald"] { --primary: #10b981; --primary-soft: rgba(16, 185, 129, 0.12); }
+[data-accent="rose"] { --primary: #f43f5e; --primary-soft: rgba(244, 63, 94, 0.12); }
+[data-accent="amber"] { --primary: #f59e0b; --primary-soft: rgba(245, 158, 11, 0.12); }
+[data-accent="sky"] { --primary: #0ea5e9; --primary-soft: rgba(14, 165, 233, 0.12); }
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+/* Тонкий скролбар. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-thumb { background: var(--border); border-radius: 9999px; }

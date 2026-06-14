@@ -1,14 +1,8 @@
 version: "3.9"
 
-# docker-compose.yml — локальне середовище розробки для FinAgent.
-# Етап 1: лише база даних PostgreSQL.
-# Запуск: docker compose up -d
+# Запуск: cp .env.example .env → задайте JWT_SECRET та ANTHROPIC_API_KEY → docker compose up -d
 
 services:
-  # -----------------------------------------------------------------------
-  # PostgreSQL — основна реляційна база даних додатку.
-  # Дані зберігаються у named volume, щоб не губитися при перезапуску.
-  # -----------------------------------------------------------------------
   postgres:
     image: postgres:16-alpine
     container_name: finagent_postgres
@@ -18,7 +12,6 @@ services:
       POSTGRES_USER: finagent_user
       POSTGRES_PASSWORD: finagent_secret
     ports:
-      # Пробрасуємо 5433 → 5432, щоб не конфліктувати з локальним Postgres.
       - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -28,6 +21,46 @@ services:
       timeout: 5s
       retries: 5
 
+  ai:
+    build:
+      context: ./financial-ai-agent
+    container_name: finagent_ai
+    restart: unless-stopped
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-haiku-4-5-20251001}
+      AI_SERVICE_PORT: 8000
+    ports:
+      - "8000:8000"
+
+  backend:
+    build:
+      context: ./backend
+    container_name: finagent_backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://finagent_user:finagent_secret@postgres:5432/finagent?sslmode=disable
+      JWT_SECRET: ${JWT_SECRET}
+      APP_PORT: 8080
+      AI_SERVICE_URL: http://ai:8000
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-dev-encryption-key-change-in-production}
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ai:
+        condition: service_started
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: finagent_frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
 volumes:
-  # Named volume для персистентного зберігання даних PostgreSQL.
   postgres_data:

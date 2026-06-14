@@ -1,65 +1,40 @@
-// App.tsx — головний компонент, health-check бекенду
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { AppShell } from "@/components/AppShell";
+import { LandingPage } from "@/pages/LandingPage";
+import { LoginPage } from "@/pages/LoginPage";
+import { RegisterPage } from "@/pages/RegisterPage";
+import { DashboardPage } from "@/pages/DashboardPage";
+import { TransactionsPage } from "@/pages/TransactionsPage";
+import { CategoriesPage } from "@/pages/CategoriesPage";
+import { ProfilePage } from "@/pages/ProfilePage";
+import { GoalsPage } from "@/pages/GoalsPage";
+import { AnomaliesPage } from "@/pages/AnomaliesPage";
 
-import { useEffect, useState } from "react";
-
-// Відповідь /ping
-interface PingResponse {
-  message: string;
-  service: string;
-}
-
-// Стан запиту
-type FetchStatus = "idle" | "loading" | "success" | "error";
-
-// Кореневий компонент
-function App() {
-  const [status, setStatus] = useState<FetchStatus>("idle");
-  const [pingData, setPingData] = useState<PingResponse | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string>("");
-
-  // GET /ping
-  const fetchPing = async (): Promise<void> => {
-    setStatus("loading");
-    setPingData(null);
-    setErrorMessage("");
-
-    try {
-      const response = await fetch("/ping");
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      const data: PingResponse = await response.json();
-      setPingData(data);
-      setStatus("success");
-    } catch (err) {
-      setErrorMessage(err instanceof Error ? err.message : "Невідома помилка");
-      setStatus("error");
-    }
-  };
-
-  // При монтуванні
-  useEffect(() => {
-    fetchPing();
-  }, []);
-
+export default function App() {
   return (
-    <div>
-      <h1>FinAgent</h1>
-      <p>Система обліку фінансів</p>
-
-      <h2>Backend Health Check</h2>
-
-      {status === "loading" && <p>Завантаження...</p>}
-      {status === "success" && pingData && (
-        <pre>{JSON.stringify(pingData, null, 2)}</pre>
-      )}
-      {status === "error" && <p>Помилка: {errorMessage}</p>}
-
-      <button onClick={fetchPing} disabled={status === "loading"}>
-        Перевірити знову
-      </button>
-    </div>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
+        <Route
+          path="/app"
+          element={
+            <ProtectedRoute>
+              <AppShell />
+            </ProtectedRoute>
+          }
+        >
+          <Route index element={<DashboardPage />} />
+          <Route path="transactions" element={<TransactionsPage />} />
+          <Route path="goals" element={<GoalsPage />} />
+          <Route path="anomalies" element={<AnomaliesPage />} />
+          <Route path="categories" element={<CategoriesPage />} />
+          <Route path="profile" element={<ProfilePage />} />
+        </Route>
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </BrowserRouter>
   );
 }
-
-export default App;

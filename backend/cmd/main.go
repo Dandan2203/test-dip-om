@@ -1,55 +1,101 @@
-// Package main — точка входу FinAgent backend
+// Package main — точка входу HTTP-сервера FinAgent.
 package main
 
 import (
+	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
-	"github.com/gin-gonic/gin"
+	"finagent/backend/internal/ai"
+	"finagent/backend/internal/config"
+	"finagent/backend/internal/database"
+	httpserver "finagent/backend/internal/delivery/http"
+	"finagent/backend/internal/mono"
+	"finagent/backend/internal/repository"
+	"finagent/backend/internal/usecase"
 )
 
-// main — старт сервера
 func main() {
-	// JSON-логер
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
 	})))
 
-	gin.SetMode(gin.ReleaseMode)
-
-	slog.Info("Starting FinAgent", "port", 8080)
-
-	if err := setupRouter().Run(":8080"); err != nil {
-		slog.Error("Server failed", "error", err)
+	cfg, err := config.Load()
+	if err != nil {
+		slog.Error("не вдалося завантажити конфігурацію", "error", err)
 		os.Exit(1)
 	}
-}
 
-// setupRouter — роутер + middleware
-func setupRouter() *gin.Engine {
-	r := gin.New()
-	r.Use(ginLogger(), gin.Recovery())
-	r.GET("/ping", handlePing)
-	return r
-}
-
-// handlePing — health check
-func handlePing(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
-		"message": "pong",
-		"service": "finagent-backend",
-	})
-}
-
-// ginLogger — логування запитів
-func ginLogger() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		c.Next()
-		slog.Info("request",
-			"method", c.Request.Method,
-			"path", c.Request.URL.Path,
-			"status", c.Writer.Status(),
-		)
+	db, err := database.Connect(cfg.DatabaseURL)
+	if err != nil {
+		slog.Error("не вдалося підключитися до бази даних", "error", err)
+		os.Exit(1)
 	}
+	defer func() { _ = db.Close() }()
+
+	userRepo := repository.NewUserRepository(db)
+	userUsecase := usecase.NewUserUsecase(userRepo, cfg.JWTSecret)
+
+	categoryRepo := repository.NewCategoryRepository(db)
+	categoryUsecase := usecase.NewCategoryUsecase(categoryRepo)
+
+	transactionRepo := repository.NewTransactionRepository(db)
+	transactionUsecase := usecase.NewTransactionUsecase(transactionRepo)
+
+	statsRepo := repository.NewStatsRepository(db)
+	statsUsecase := usecase.NewStatsUsecase(statsRepo)
+
+	goalRepo := repository.NewGoalRepository(db)
+	goalUsecase := usecase.NewGoalUsecase(goalRepo)
+
+	actionRepo := repository.NewActionRepository(db)
+	actionUsecase := usecase.NewActionUsecase(actionRepo, transactionRepo, goalRepo)
+
+	chatLogRepo := repository.NewChatLogRepository(db)
+
+	dashboardRepo := repository.NewDashboardRepository(db)
+	dashboardUsecase := usecase.NewDashboardUsecase(dashboardRepo)
+
+	monoRepo := repository.NewMonoRepository(db)
+	monoClient := mono.NewClient()
+	monoUsecase := usecase.NewMonoUsecase(monoRepo, monoClient, transactionRepo, categoryRepo, cfg.EncryptionKey)
+
+	aiClient := ai.NewClient(cfg.AIServiceURL)
+
+	server := &http.Server{
+		Addr: ":" + cfg.AppPort,
+		Handler: httpserver.NewRouter(
+			db, userUsecase, categoryUsecase, transactionUsecase,
+			statsUsecase, goalUsecase, actionUsecase, actionRepo, chatLogRepo, dashboardUsecase, monoUsecase,
+			aiClient, transactionRepo, cfg.JWTSecret,
+		),
+	}
+
+	// Сервер у фоновій горутині, щоб головна могла очікувати сигнал завершення.
+	go func() {
+		slog.Info("запуск FinAgent backend", "port", cfg.AppPort)
+		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			slog.Error("сервер завершив роботу з помилкою", "error", err)
+			os.Exit(1)
+		}
+	}()
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	// Graceful shutdown: до 10 с на завершення активних запитів.
+	slog.Info("отримано сигнал завершення, зупинка сервера...")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := server.Shutdown(ctx); err != nil {
+		slog.Error("некоректне завершення роботи сервера", "error", err)
+	}
+	slog.Info("сервер зупинено")
 }
