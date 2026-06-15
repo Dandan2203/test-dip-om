@@ -35,3 +35,23 @@ func (r *ChatLogRepository) Record(ctx context.Context, l *domain.ChatLog) error
 	}
 	return nil
 }
+
+// History повертає останні limit звернень користувача у хронологічному порядку.
+func (r *ChatLogRepository) History(ctx context.Context, userID int64, limit int) ([]domain.ChatLog, error) {
+	const query = `
+		SELECT id, user_id, message, intent, response, created_at
+		FROM (
+			SELECT id, user_id, message, intent, response, created_at
+			FROM ai_chat_logs
+			WHERE user_id = $1
+			ORDER BY id DESC
+			LIMIT $2
+		) recent
+		ORDER BY id ASC`
+
+	var logs []domain.ChatLog
+	if err := r.db.SelectContext(ctx, &logs, query, userID, limit); err != nil {
+		return nil, fmt.Errorf("repository: історія чату: %w", err)
+	}
+	return logs, nil
+}

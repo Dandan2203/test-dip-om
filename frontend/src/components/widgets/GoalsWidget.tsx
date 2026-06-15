@@ -6,7 +6,7 @@ export function GoalsWidget() {
   const { data: goals } = useGoals();
 
   return (
-    <WidgetFrame title="Прогрес цілей">
+    <WidgetFrame title="Прогрес цілей" to="/app/goals">
       {!goals || goals.length === 0 ? (
         <p className="py-8 text-center text-sm text-muted-foreground">Цілей ще немає</p>
       ) : (

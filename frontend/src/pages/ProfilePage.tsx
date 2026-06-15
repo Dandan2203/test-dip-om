@@ -356,10 +356,7 @@ export function ProfilePage() {
       {/* Вийти */}
       <section className="rounded-2xl border border-border bg-card p-5">
         <div className="flex items-center justify-between">
-          <div>
-            <p className="font-medium text-sm">Вийти з акаунта</p>
-            <p className="text-xs text-muted-foreground mt-0.5">Токен буде видалено з браузера</p>
-          </div>
+          <p className="font-medium text-sm">Вийти з акаунта</p>
           <Button variant="destructive" size="sm" onClick={handleLogout}>
             <LogOut size={14} /> Вийти
           </Button>

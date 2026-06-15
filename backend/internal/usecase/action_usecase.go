@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"encoding/json"
 
 	"finagent/backend/internal/domain"
 )
@@ -41,10 +42,19 @@ func (uc *ActionUsecase) reverse(ctx context.Context, a *domain.ActionLog) error
 		}
 		return uc.txRepo.Restore(ctx, a.EntityID)
 	case domain.EntityGoal:
-		if a.ActionType == domain.ActionCreate {
+		switch a.ActionType {
+		case domain.ActionCreate:
 			return uc.goals.Delete(ctx, a.EntityID)
+		case domain.ActionContribute:
+			// Відкат поповнення/зняття — застосувати протилежний знак delta.
+			var p struct {
+				Delta float64 `json:"delta"`
+			}
+			_ = json.Unmarshal(a.Payload, &p)
+			return uc.goals.Contribute(ctx, a.EntityID, -p.Delta)
+		default:
+			return uc.goals.Restore(ctx, a.EntityID)
 		}
-		return uc.goals.Restore(ctx, a.EntityID)
 	}
 	return nil
 }

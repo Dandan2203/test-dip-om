@@ -72,6 +72,22 @@
   }
 }
 
+/* Поки контейнер дашборда активно змінює ширину (відкриття чату, ресайз вікна) —
+   вимикаємо анімацію плиток, щоб вони не «пливли» й не накладались одна на одну.
+   Після завершення ресайзу клас знімається й перетягування знову плавне. */
+.grid-resizing .react-grid-item {
+  transition: none !important;
+}
+
+/* Підсвічування новоствореної цілі (перехід із чату): двічі блимнути рамкою. */
+@keyframes flash-highlight {
+  0%, 100% { box-shadow: 0 0 0 0 transparent; }
+  25%, 75% { box-shadow: 0 0 0 3px var(--primary); }
+}
+.flash-highlight {
+  animation: flash-highlight 1.2s ease-in-out 2;
+}
+
 /* Тонкий скролбар. */
 * {
   scrollbar-width: thin;

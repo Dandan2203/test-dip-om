@@ -46,6 +46,9 @@ func NewRouter(
 	dashboardHandler := NewDashboardHandler(dashboardUC)
 	monoHandler := NewMonoHandler(monoUC)
 
+	// Окремий, суворіший ліміт для AI-маршрутів — виклики LLM повільні й платні.
+	aiLimit := middleware.RateLimit(1, 5)
+
 	// Обмеження частоти: 20 запитів/с зі сплеском до 40 на IP.
 	api := router.Group("/api", middleware.RateLimit(20, 40))
 	{
@@ -89,8 +92,9 @@ func NewRouter(
 
 		api.GET("/dashboard", middleware.Auth(jwtSecret), statsHandler.Dashboard)
 		api.GET("/transactions/export", middleware.Auth(jwtSecret), statsHandler.Export)
-		api.POST("/chat", middleware.Auth(jwtSecret), chatHandler.Chat)
-		api.GET("/anomalies", middleware.Auth(jwtSecret), auditHandler.Anomalies)
+		api.POST("/chat", aiLimit, middleware.Auth(jwtSecret), chatHandler.Chat)
+		api.GET("/chat/history", middleware.Auth(jwtSecret), chatHandler.History)
+		api.GET("/anomalies", aiLimit, middleware.Auth(jwtSecret), auditHandler.Anomalies)
 		api.POST("/actions/undo", middleware.Auth(jwtSecret), actionHandler.Undo)
 		api.POST("/actions/execute", middleware.Auth(jwtSecret), chatHandler.Execute)
 
@@ -109,7 +113,7 @@ func NewRouter(
 			mono.GET("/status", monoHandler.Status)
 			mono.GET("/accounts", monoHandler.Accounts)
 			mono.GET("/currency", monoHandler.Currency)
-			mono.POST("/import", monoHandler.Import)
+			mono.POST("/import", aiLimit, monoHandler.Import)
 		}
 
 		goals := api.Group("/goals")

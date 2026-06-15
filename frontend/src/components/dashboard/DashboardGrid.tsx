@@ -6,6 +6,7 @@ import api from "@/lib/api";
 import { WIDGETS, DEFAULT_LAYOUTS, type LayoutItem } from "./widgetRegistry";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
+import { DashboardEditContext } from "./editContext";
 
 function toItems(layout: Layout): LayoutItem[] {
   return layout.map((l) => ({ i: l.i, x: l.x, y: l.y, w: l.w, h: l.h }));
@@ -13,6 +14,7 @@ function toItems(layout: Layout): LayoutItem[] {
 
 export function DashboardGrid({ name, editMode }: { name: string; editMode: boolean }) {
   const [layout, setLayout] = useState<LayoutItem[]>([]);
+  const [loadedName, setLoadedName] = useState<string | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { width, containerRef, mounted } = useContainerWidth({ initialWidth: 1200 });
 
@@ -21,10 +23,32 @@ export function DashboardGrid({ name, editMode }: { name: string; editMode: bool
     queryFn: async () => (await api.get<{ data: LayoutItem[] }>(`/dashboards/${name}`)).data.data,
   });
 
+  // Поки контейнер активно змінює ширину — вішаємо клас, що вимикає анімацію
+  // плиток (інакше вони «пливуть»). Знімаємо за 180 мс після останньої зміни.
+  // Через DOM-клас, а не React-стан — щоб не ре-рендерити сітку на кожен кадр.
   useEffect(() => {
-    if (!isSuccess) return;
+    const el = containerRef.current;
+    if (!el) return;
+    let t: ReturnType<typeof setTimeout>;
+    const ro = new ResizeObserver(() => {
+      el.classList.add("grid-resizing");
+      clearTimeout(t);
+      t = setTimeout(() => el.classList.remove("grid-resizing"), 180);
+    });
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      clearTimeout(t);
+    };
+  }, [containerRef]);
+
+  // Сідуємо локальний (редагований) стан із серверних даних під час рендера, а не
+  // в ефекті: лише коли змінилася назва дашборда. Фонове перезавантаження не затирає
+  // правки, що тривають. Патерн «коригування стану під час рендера» з доків React.
+  if (isSuccess && loadedName !== name) {
+    setLoadedName(name);
     setLayout(data && data.length > 0 ? data : DEFAULT_LAYOUTS[name] ?? []);
-  }, [isSuccess, data, name]);
+  }
 
   function save(next: LayoutItem[]) {
     if (saveTimer.current) clearTimeout(saveTimer.current);
@@ -87,6 +111,7 @@ export function DashboardGrid({ name, editMode }: { name: string; editMode: bool
         </div>
       )}
 
+      <DashboardEditContext.Provider value={editMode}>
       <div ref={containerRef as RefObject<HTMLDivElement>}>
         {mounted && (
           <GridLayout
@@ -124,6 +149,7 @@ export function DashboardGrid({ name, editMode }: { name: string; editMode: bool
           </GridLayout>
         )}
       </div>
+      </DashboardEditContext.Provider>
     </div>
   );
 }

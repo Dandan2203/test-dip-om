@@ -13,14 +13,16 @@ import (
 )
 
 type Client struct {
-	baseURL    string
-	httpClient *http.Client
+	baseURL       string
+	internalToken string
+	httpClient    *http.Client
 }
 
-func NewClient(baseURL string) *Client {
+func NewClient(baseURL, internalToken string) *Client {
 	return &Client{
-		baseURL:    baseURL,
-		httpClient: &http.Client{Timeout: 30 * time.Second},
+		baseURL:       baseURL,
+		internalToken: internalToken,
+		httpClient:    &http.Client{Timeout: 30 * time.Second},
 	}
 }
 
@@ -91,9 +93,15 @@ type ChatCategory struct {
 	Type string `json:"type"`
 }
 
+type ChatHistoryMsg struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
 type ChatRequest struct {
-	Message      string         `json:"message"`
-	UserID       int64          `json:"user_id"`
+	Message      string            `json:"message"`
+	UserID       int64             `json:"user_id"`
+	History      []ChatHistoryMsg  `json:"history"`
 	Transactions []ChatTransaction `json:"transactions"`
 	Goals        []ChatGoal        `json:"goals"`
 	Categories   []ChatCategory    `json:"categories"`
@@ -172,22 +180,46 @@ func (c *Client) post(ctx context.Context, path string, body, result any) error 
 		return fmt.Errorf("ai client: marshal: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, bytes.NewReader(data))
-	if err != nil {
-		return fmt.Errorf("ai client: new request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
+	const attempts = 3
+	var lastErr error
+	for attempt := 0; attempt < attempts; attempt++ {
+		if attempt > 0 {
+			// Лінійний backoff із повагою до скасування контексту.
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(time.Duration(attempt) * 300 * time.Millisecond):
+			}
+		}
 
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("ai client: do request: %w", err)
-	}
-	defer resp.Body.Close()
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, bytes.NewReader(data))
+		if err != nil {
+			return fmt.Errorf("ai client: new request: %w", err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Internal-Token", c.internalToken)
 
-	if resp.StatusCode >= 400 {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("ai client: status %d: %s", resp.StatusCode, body)
-	}
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			lastErr = fmt.Errorf("ai client: do request: %w", err) // мережна помилка — повтор
+			continue
+		}
 
-	return json.NewDecoder(resp.Body).Decode(result)
+		if resp.StatusCode >= 500 {
+			b, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			lastErr = fmt.Errorf("ai client: status %d: %s", resp.StatusCode, b) // 5xx — повтор
+			continue
+		}
+		if resp.StatusCode >= 400 {
+			b, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			return fmt.Errorf("ai client: status %d: %s", resp.StatusCode, b) // 4xx — без повтору
+		}
+
+		err = json.NewDecoder(resp.Body).Decode(result)
+		resp.Body.Close()
+		return err
+	}
+	return lastErr
 }

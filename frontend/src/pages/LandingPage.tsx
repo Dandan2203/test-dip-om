@@ -18,7 +18,6 @@ import { useThemeStore } from "@/store/themeStore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { cn } from "@/lib/utils";
 
 const features = [
   {
@@ -60,7 +59,7 @@ const DEMO: { user: string; ai: string }[] = [
   },
   {
     user: "Додай витрату 350 грн на кіно",
-    ai: "✅ Додав «Кіно» — 350 ₴ у категорію Розваги. Якщо помилка — натисніть «Відмінити».",
+    ai: "✅ Додав «Кіно» — 350 ₴ у категорію Розваги",
   },
   {
     user: "Коли я накопичу 50 000 ₴ на відпустку?",
@@ -189,19 +188,6 @@ function ChatDemo() {
             </motion.div>
           )}
         </AnimatePresence>
-      </div>
-
-      {/* Індикатор поточного прикладу */}
-      <div className="mt-3 flex justify-center gap-1.5">
-        {DEMO.map((_, i) => (
-          <span
-            key={i}
-            className={cn(
-              "h-1.5 rounded-full transition-all duration-300",
-              i === idx ? "w-4 bg-primary" : "w-1.5 bg-border",
-            )}
-          />
-        ))}
       </div>
     </div>
   );
@@ -367,8 +353,19 @@ export function LandingPage() {
         </div>
       </section>
 
-      <footer className="border-t border-border py-8 text-center text-sm text-muted-foreground">
-        FinAgent — дипломний проєкт ЖДТУ · {new Date().getFullYear()}
+      <footer className="border-t border-border py-8">
+        <div className="mx-auto flex max-w-6xl flex-col items-center gap-4 px-6">
+          {/* Біла версія лого — на темному фоні (вимога бренду «Житомирської політехніки») */}
+          <img
+            src={mode === "dark" ? "/ztu-logo-white.png" : "/ztu-logo.png"}
+            alt="Державний університет «Житомирська політехніка»"
+            className="h-12 w-auto"
+          />
+          <div className="text-center text-sm text-muted-foreground">
+            <p>FinAgent — дипломний проєкт — Державний університет «Житомирська політехніка»</p>
+            <p className="mt-1">Автор: Майзенберг П.Д. — {new Date().getFullYear()}</p>
+          </div>
+        </div>
       </footer>
 
       {/* Auth: Login */}

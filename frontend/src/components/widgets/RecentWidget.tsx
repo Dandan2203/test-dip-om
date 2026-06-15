@@ -8,7 +8,7 @@ export function RecentWidget() {
   const txs = data?.recentTransactions ?? [];
 
   return (
-    <WidgetFrame title="Останні операції">
+    <WidgetFrame title="Останні операції" to="/app/transactions">
       {txs.length === 0 ? (
         <p className="py-8 text-center text-sm text-muted-foreground">Поки немає операцій</p>
       ) : (

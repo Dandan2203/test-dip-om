@@ -11,6 +11,9 @@ type ActionType string
 const (
 	ActionCreate ActionType = "create"
 	ActionDelete ActionType = "delete"
+	// ActionContribute — зміна суми цілі (поповнення/зняття). Payload містить
+	// {"delta": <signed>}, undo застосовує протилежний знак.
+	ActionContribute ActionType = "contribute"
 )
 
 type EntityType string

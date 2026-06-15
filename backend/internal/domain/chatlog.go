@@ -19,4 +19,5 @@ type ChatLog struct {
 
 type ChatLogRepository interface {
 	Record(ctx context.Context, l *ChatLog) error
+	History(ctx context.Context, userID int64, limit int) ([]ChatLog, error)
 }

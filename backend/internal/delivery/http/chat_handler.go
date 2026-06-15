@@ -47,7 +47,14 @@ func NewChatHandler(
 }
 
 type chatRequest struct {
-	Message string `json:"message" binding:"required"`
+	Message string           `json:"message" binding:"required,max=2000"`
+	History []chatHistoryMsg `json:"history" binding:"max=10,dive"`
+}
+
+// chatHistoryMsg — попередня репліка діалогу (короткий контекст для LLM).
+type chatHistoryMsg struct {
+	Role    string `json:"role" binding:"required,oneof=user assistant"`
+	Content string `json:"content" binding:"required,max=4000"`
 }
 
 // PendingAction — дія, розпізнана ШІ й підготована до виконання,
@@ -67,6 +74,9 @@ type PendingAction struct {
 	TargetAmount    float64 `json:"targetAmount,omitempty"`
 	Deadline        *string `json:"deadline,omitempty"`
 	ConfirmText     string  `json:"confirmText"`
+	// RequiresConfirm — чи показувати «Так/Ні». true лише для створення цілі
+	// та видалень; решта дій виконуються одразу з можливістю undo.
+	RequiresConfirm bool `json:"requiresConfirm"`
 }
 
 func (h *ChatHandler) Chat(c *gin.Context) {
@@ -146,9 +156,15 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 		})
 	}
 
+	aiHistory := make([]ai.ChatHistoryMsg, 0, len(req.History))
+	for _, m := range req.History {
+		aiHistory = append(aiHistory, ai.ChatHistoryMsg{Role: m.Role, Content: m.Content})
+	}
+
 	result, err := h.aiClient.Chat(ctx, ai.ChatRequest{
 		Message:      req.Message,
 		UserID:       userID,
+		History:      aiHistory,
 		Transactions: aiTxs,
 		Goals:        aiGoals,
 		Categories:   aiCats,
@@ -174,14 +190,15 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 		}
 	}
 
-	// Зберігаємо звернення у JSONB-лог (best-effort).
+	// Лог звернення (best-effort): зберігаємо лише текст відповіді й інтент,
+	// без деталей pendingAction (суми, категорії, цілі) — мінімізуємо PII у БД.
 	if h.chatLogRepo != nil {
-		responseJSON, _ := json.Marshal(resp)
+		logged, _ := json.Marshal(gin.H{"response": resp["response"], "intent": result.Intent})
 		_ = h.chatLogRepo.Record(ctx, &domain.ChatLog{
 			UserID:   userID,
 			Message:  req.Message,
 			Intent:   result.Intent,
-			Response: responseJSON,
+			Response: logged,
 		})
 	}
 
@@ -214,6 +231,43 @@ func (h *ChatHandler) Execute(c *gin.Context) {
 		}
 	}
 	RespondOK(c, http.StatusOK, resp)
+}
+
+// History повертає збережену історію чату користувача, розгорнуту в окремі
+// повідомлення (user/assistant) для відновлення панелі після перезавантаження.
+func (h *ChatHandler) History(c *gin.Context) {
+	userID := middleware.UserIDFromContext(c)
+
+	logs, err := h.chatLogRepo.History(c.Request.Context(), userID, 50)
+	if err != nil {
+		HandleError(c, err)
+		return
+	}
+
+	type histMsg struct {
+		Role      string `json:"role"`
+		Content   string `json:"content"`
+		Intent    string `json:"intent,omitempty"`
+		Timestamp string `json:"timestamp"`
+	}
+
+	messages := make([]histMsg, 0, len(logs)*2)
+	for _, l := range logs {
+		ts := l.CreatedAt.Format(time.RFC3339)
+		messages = append(messages, histMsg{Role: "user", Content: l.Message, Timestamp: ts})
+
+		var payload struct {
+			Response string `json:"response"`
+		}
+		_ = json.Unmarshal(l.Response, &payload)
+		if payload.Response != "" {
+			messages = append(messages, histMsg{
+				Role: "assistant", Content: payload.Response, Intent: l.Intent, Timestamp: ts,
+			})
+		}
+	}
+
+	RespondOK(c, http.StatusOK, gin.H{"messages": messages})
 }
 
 // resolveAction зіставляє розпізнану ШІ дію з реальними сутностями користувача
@@ -289,11 +343,12 @@ func (h *ChatHandler) resolveAction(
 
 	case "create_goal":
 		p := &PendingAction{
-			ActionType:   "create_goal",
-			EntityType:   "goal",
-			GoalTitle:    action.Title,
-			TargetAmount: action.TargetAmount,
-			Deadline:     action.Deadline,
+			ActionType:      "create_goal",
+			EntityType:      "goal",
+			GoalTitle:       action.Title,
+			TargetAmount:    action.TargetAmount,
+			Deadline:        action.Deadline,
+			RequiresConfirm: true,
 		}
 		p.ConfirmText = fmt.Sprintf("Створити ціль «%s» на %s ₴?", action.Title, money(action.TargetAmount))
 		return p, ""
@@ -307,11 +362,12 @@ func (h *ChatHandler) resolveAction(
 			return nil, "Не знайшов таку транзакцію."
 		}
 		p := &PendingAction{
-			ActionType:    "delete_transaction",
-			EntityType:    "transaction",
-			TransactionID: action.TransactionID,
-			Description:   tx.Description,
-			Amount:        tx.Amount,
+			ActionType:      "delete_transaction",
+			EntityType:      "transaction",
+			TransactionID:   action.TransactionID,
+			Description:     tx.Description,
+			Amount:          tx.Amount,
+			RequiresConfirm: true,
 		}
 		p.ConfirmText = fmt.Sprintf("Видалити транзакцію на %s ₴?", money(tx.Amount))
 		return p, ""
@@ -322,10 +378,11 @@ func (h *ChatHandler) resolveAction(
 			return nil, "Не знайшов таку ціль."
 		}
 		p := &PendingAction{
-			ActionType: "delete_goal",
-			EntityType: "goal",
-			GoalID:     g.ID,
-			GoalTitle:  g.Title,
+			ActionType:      "delete_goal",
+			EntityType:      "goal",
+			GoalID:          g.ID,
+			GoalTitle:       g.Title,
+			RequiresConfirm: true,
 		}
 		p.ConfirmText = fmt.Sprintf("Видалити ціль «%s»?", g.Title)
 		return p, ""
@@ -367,14 +424,30 @@ func (h *ChatHandler) runAction(ctx context.Context, userID int64, p *PendingAct
 		if _, err := h.goalUC.Contribute(ctx, userID, p.GoalID, p.Amount); err != nil {
 			return nil, err
 		}
-		return nil, nil // поповнення не входить у undo (підтвердження вже є захистом)
+		log := &domain.ActionLog{
+			UserID:     userID,
+			ActionType: domain.ActionContribute,
+			EntityType: domain.EntityGoal,
+			EntityID:   p.GoalID,
+			Payload:    mustJSON(map[string]float64{"delta": p.Amount}),
+		}
+		_ = h.actionRepo.Record(ctx, log)
+		return log, nil
 
 	case "withdraw_goal":
 		// Зняття = від'ємний внесок; репозиторій не дає піти нижче 0.
 		if _, err := h.goalUC.Contribute(ctx, userID, p.GoalID, -p.Amount); err != nil {
 			return nil, err
 		}
-		return nil, nil
+		log := &domain.ActionLog{
+			UserID:     userID,
+			ActionType: domain.ActionContribute,
+			EntityType: domain.EntityGoal,
+			EntityID:   p.GoalID,
+			Payload:    mustJSON(map[string]float64{"delta": -p.Amount}),
+		}
+		_ = h.actionRepo.Record(ctx, log)
+		return log, nil
 
 	case "create_goal":
 		var dl *time.Time

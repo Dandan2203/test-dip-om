@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Literal
 
 
@@ -42,9 +42,15 @@ class CategorizeResponse(BaseModel):
 
 # --- /chat ---
 
+class HistoryMsg(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(max_length=4000)
+
+
 class ChatRequest(BaseModel):
-    message: str
+    message: str = Field(max_length=4000)
     user_id: int
+    history: list[HistoryMsg] = Field(default_factory=list, max_length=10)
     transactions: list[TransactionItem]
     goals: list[GoalItem]
     categories: list[CategoryItem]

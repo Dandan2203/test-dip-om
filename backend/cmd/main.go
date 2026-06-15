@@ -65,7 +65,7 @@ func main() {
 	monoClient := mono.NewClient()
 	monoUsecase := usecase.NewMonoUsecase(monoRepo, monoClient, transactionRepo, categoryRepo, cfg.EncryptionKey)
 
-	aiClient := ai.NewClient(cfg.AIServiceURL)
+	aiClient := ai.NewClient(cfg.AIServiceURL, cfg.AIInternalToken)
 
 	server := &http.Server{
 		Addr: ":" + cfg.AppPort,

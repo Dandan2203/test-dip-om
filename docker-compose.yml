@@ -1,6 +1,6 @@
 version: "3.9"
 
-# Запуск: cp .env.example .env → задайте JWT_SECRET та ANTHROPIC_API_KEY → docker compose up -d
+# Запуск: cp .env.example .env → задайте JWT_SECRET, ANTHROPIC_API_KEY, ENCRYPTION_KEY, INTERNAL_API_TOKEN → docker compose up -d
 
 services:
   postgres:
@@ -27,11 +27,13 @@ services:
     container_name: finagent_ai
     restart: unless-stopped
     environment:
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?set ANTHROPIC_API_KEY in .env}
       ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-haiku-4-5-20251001}
       AI_SERVICE_PORT: 8000
-    ports:
-      - "8000:8000"
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:?set INTERNAL_API_TOKEN in .env}
+    # Порт назовні не публікуємо — сервіс приватний, бекенд ходить через внутрішню мережу.
+    expose:
+      - "8000"
 
   backend:
     build:
@@ -40,10 +42,11 @@ services:
     restart: unless-stopped
     environment:
       DATABASE_URL: postgres://finagent_user:finagent_secret@postgres:5432/finagent?sslmode=disable
-      JWT_SECRET: ${JWT_SECRET}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
       APP_PORT: 8080
       AI_SERVICE_URL: http://ai:8000
-      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-dev-encryption-key-change-in-production}
+      AI_INTERNAL_TOKEN: ${INTERNAL_API_TOKEN:?set INTERNAL_API_TOKEN in .env}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?set ENCRYPTION_KEY in .env}
     ports:
       - "8080:8080"
     depends_on:

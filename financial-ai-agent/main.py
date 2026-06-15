@@ -1,15 +1,14 @@
 import logging
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, HTTPException, Header, Depends
 
-from config import AI_SERVICE_PORT
+from config import AI_SERVICE_PORT, INTERNAL_API_TOKEN
 from models import (
     CategorizeRequest, CategorizeResponse,
     ChatRequest, ChatResponse,
     AuditRequest, AuditResponse,
 )
 from agents.categorizer import categorize
-from agents.chat_graph import chat_graph
+from agents.chat import run_chat
 from agents.auditor import audit
 
 logging.basicConfig(level=logging.INFO)
@@ -17,12 +16,11 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="FinAgent AI Service", version="1.0.0")
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+
+def require_internal(x_internal_token: str = Header(default="")):
+    # Сервіс не публічний: викликати має лише Go-бекенд зі спільним секретом.
+    if x_internal_token != INTERNAL_API_TOKEN:
+        raise HTTPException(status_code=401, detail="unauthorized")
 
 
 @app.get("/health")
@@ -30,7 +28,7 @@ def health():
     return {"status": "ok"}
 
 
-@app.post("/categorize", response_model=CategorizeResponse)
+@app.post("/categorize", response_model=CategorizeResponse, dependencies=[Depends(require_internal)])
 def categorize_endpoint(req: CategorizeRequest):
     try:
         return categorize(req)
@@ -39,30 +37,16 @@ def categorize_endpoint(req: CategorizeRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/chat", response_model=ChatResponse)
+@app.post("/chat", response_model=ChatResponse, dependencies=[Depends(require_internal)])
 def chat_endpoint(req: ChatRequest):
     try:
-        initial_state = {
-            "message": req.message,
-            "transactions": [t.model_dump() for t in req.transactions],
-            "goals": [g.model_dump() for g in req.goals],
-            "categories": [c.model_dump() for c in req.categories],
-            "intent": "",
-            "response": "",
-            "action": None,
-        }
-        result = chat_graph.invoke(initial_state)
-        from models import ActionData
-        action = None
-        if result.get("action"):
-            action = ActionData(**result["action"])
-        return ChatResponse(response=result["response"], intent=result["intent"], action=action)
+        return run_chat(req)
     except Exception as e:
         logger.error("chat error: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/audit", response_model=AuditResponse)
+@app.post("/audit", response_model=AuditResponse, dependencies=[Depends(require_internal)])
 def audit_endpoint(req: AuditRequest):
     try:
         return audit(req)

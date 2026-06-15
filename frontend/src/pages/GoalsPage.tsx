@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2, PlusCircle, Target } from "lucide-react";
 import api from "@/lib/api";
@@ -6,7 +7,7 @@ import type { Goal } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { formatMoney } from "@/lib/utils";
+import { cn, formatMoney } from "@/lib/utils";
 
 interface FormData {
   title: string;
@@ -30,6 +31,24 @@ export function GoalsPage() {
     queryKey: ["goals"],
     queryFn: () => api.get<{ data: Goal[] }>("/goals").then((r) => r.data.data),
   });
+
+  // Підсвічування цілі, на яку перейшли з чату (?highlight=ID).
+  // flashId виводимо з URL під час рендера; через 2.5 с прибираємо параметр,
+  // тож CSS-анімація програється один раз і не повторюється при оновленні.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const flashId = Number(searchParams.get("highlight")) || null;
+
+  useEffect(() => {
+    if (!flashId) return;
+    document
+      .querySelector(`[data-goal-id="${flashId}"]`)
+      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    const t = setTimeout(() => {
+      searchParams.delete("highlight");
+      setSearchParams(searchParams, { replace: true });
+    }, 2500);
+    return () => clearTimeout(t);
+  }, [flashId, searchParams, setSearchParams]);
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
@@ -106,7 +125,14 @@ export function GoalsPage() {
             const pct = Math.min(100, Math.round((g.currentAmount / g.targetAmount) * 100));
             const done = pct >= 100;
             return (
-              <div key={g.id} className="rounded-2xl border border-border bg-card p-5">
+              <div
+                key={g.id}
+                data-goal-id={g.id}
+                className={cn(
+                  "rounded-2xl border border-border bg-card p-5",
+                  flashId === g.id && "flash-highlight",
+                )}
+              >
                 <div className="flex items-start justify-between mb-4">
                   <div>
                     <h3 className="font-medium">{g.title}</h3>

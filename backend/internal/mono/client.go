@@ -16,7 +16,7 @@ const baseURL = "https://api.monobank.ua"
 type Client struct {
 	httpClient *http.Client
 
-	// Кеш курсів: API має ліміт 1 запит/хв, тож тримаємо свіже значення.
+	// Кеш курсів
 	rateMu     sync.Mutex
 	rateCache  []CurrencyRate
 	rateExpiry time.Time

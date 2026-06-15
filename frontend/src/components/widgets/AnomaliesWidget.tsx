@@ -7,7 +7,7 @@ export function AnomaliesWidget() {
   const { data: anomalies, isError } = useAnomalies();
 
   return (
-    <WidgetFrame title="Аномалії витрат">
+    <WidgetFrame title="Аномалії витрат" to="/app/anomalies">
       {isError ? (
         <p className="py-8 text-center text-sm text-muted-foreground">ШІ-сервіс недоступний</p>
       ) : !anomalies || anomalies.length === 0 ? (

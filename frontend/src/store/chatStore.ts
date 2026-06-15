@@ -1,9 +1,14 @@
 import { create } from "zustand";
 
 export const CHAT_MIN_WIDTH = 320;
-export const CHAT_MAX_WIDTH = 640;
+// Стеля ширини — 40% вікна (але не менша за мінімум). Рахуємо динамічно,
+// щоб панель не «з'їдала» більш як 40% екрана на будь-якій ширині монітора.
+const maxWidth = () =>
+  typeof window === "undefined"
+    ? 640
+    : Math.max(CHAT_MIN_WIDTH, Math.round(window.innerWidth * 0.4));
 
-const clampWidth = (w: number) => Math.max(CHAT_MIN_WIDTH, Math.min(CHAT_MAX_WIDTH, w));
+const clampWidth = (w: number) => Math.max(CHAT_MIN_WIDTH, Math.min(maxWidth(), w));
 
 interface ChatState {
   open: boolean;
@@ -15,7 +20,7 @@ interface ChatState {
 
 export const useChatStore = create<ChatState>((set, get) => ({
   open: false,
-  width: 384,
+  width: clampWidth(384),
   toggle: () => set({ open: !get().open }),
   setOpen: (open) => set({ open }),
   setWidth: (width) => set({ width: clampWidth(width) }),

@@ -1,9 +1,11 @@
 import { useState, useRef, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { X, Send, Sparkles, Undo2, Check } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useQueryClient } from "@tanstack/react-query";
 import api from "@/lib/api";
 import { useChatStore } from "@/store/chatStore";
+import { Markdown } from "@/components/Markdown";
 import type { ChatMessage, ChatAction, PendingAction } from "@/types";
 import { cn } from "@/lib/utils";
 
@@ -22,9 +24,12 @@ const INTENT_LABELS: Record<string, string> = {
   ACTION: "Дія",
 };
 
+const UNDO_TIMEOUT = 8000;
+
 export function ChatPanel() {
   const { open, setOpen, width, setWidth } = useChatStore();
   const qc = useQueryClient();
+  const navigate = useNavigate();
 
   // Перетягування лівого краю змінює ширину панелі (clamp у сторі).
   function startResize(e: React.MouseEvent) {
@@ -39,21 +44,76 @@ export function ChatPanel() {
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
   }
+
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [undo, setUndo] = useState<ChatAction | null>(null);
   const [undoing, setUndoing] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
 
-  const lastAction = [...messages].reverse().find((m) => m.role === "assistant" && m.action)?.action;
+  // Перерахунок clamp ширини при зміні розміру вікна (стеля = 40% вікна).
+  useEffect(() => {
+    const onResize = () => setWidth(useChatStore.getState().width);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [setWidth]);
+
+  // Прибираємо таймер undo при розмонтуванні.
+  useEffect(() => () => {
+    if (undoTimer.current) clearTimeout(undoTimer.current);
+  }, []);
+
+  // Відновлюємо історію чату при першому відкритті панелі.
+  useEffect(() => {
+    if (!open || messages.length > 0) return;
+    api
+      .get<{ data: { messages: ChatMessage[] } }>("/chat/history")
+      .then((res) => setMessages(res.data.data.messages ?? []))
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  // Показуємо компактний тост undo, що сам зникає через UNDO_TIMEOUT.
+  function showUndo(action: ChatAction | null) {
+    if (undoTimer.current) clearTimeout(undoTimer.current);
+    setUndo(action);
+    if (action) undoTimer.current = setTimeout(() => setUndo(null), UNDO_TIMEOUT);
+  }
+
+  // Виконує підтверджену/автоматичну дію: оновлює дані, тост undo, навігацію.
+  async function executeAction(pending: PendingAction): Promise<ChatAction | null> {
+    const res = await api.post<{ data: { executed: boolean; action?: ChatAction } }>(
+      "/actions/execute",
+      pending,
+    );
+    const executed = res.data.data.action ?? null;
+    qc.invalidateQueries({ queryKey: ["transactions"] });
+    qc.invalidateQueries({ queryKey: ["goals"] });
+    qc.invalidateQueries({ queryKey: ["dashboard"] });
+    if (executed) showUndo(executed);
+    // Створення цілі — переходимо на сторінку цілей і підсвічуємо нову.
+    if (pending.actionType === "create_goal" && executed) {
+      navigate(`/app/goals?highlight=${executed.entityId}`);
+    }
+    return executed;
+  }
 
   async function send(text: string) {
     const message = text.trim();
     if (!message || loading) return;
+
+    // Короткий контекст: останні 6 текстових реплік (для мультитурн-діалогу).
+    const history = messages
+      .filter((m) => m.content?.trim())
+      .slice(-6)
+      .map((m) => ({ role: m.role, content: m.content }));
+
     setMessages((p) => [
       ...p,
       { role: "user", content: message, timestamp: new Date().toISOString() },
@@ -63,19 +123,32 @@ export function ChatPanel() {
     try {
       const res = await api.post<{
         data: { response: string; intent: string; pendingAction?: PendingAction | null };
-      }>("/chat", { message });
+      }>("/chat", { message, history }, { timeout: 60000 });
       const { response, intent, pendingAction } = res.data.data;
+      const needsConfirm = !!pendingAction?.requiresConfirm;
+      const autoExec = !!pendingAction && !needsConfirm;
+
       setMessages((p) => [
         ...p,
         {
           role: "assistant",
           content: response,
           intent,
-          pendingAction: pendingAction ?? null,
-          pendingStatus: pendingAction ? "pending" : undefined,
+          pendingAction: needsConfirm ? pendingAction : null,
+          pendingStatus: needsConfirm ? "pending" : undefined,
           timestamp: new Date().toISOString(),
         },
       ]);
+
+      // Дії без підтвердження (додати транзакцію, поповнити/зняти ціль) — одразу.
+      if (autoExec && pendingAction) {
+        try {
+          await executeAction(pendingAction);
+          setMessages((p) => p.map((m, i) => (i === p.length - 1 ? { ...m, auto: "ok" } : m)));
+        } catch {
+          setMessages((p) => p.map((m, i) => (i === p.length - 1 ? { ...m, auto: "err" } : m)));
+        }
+      }
     } catch {
       setMessages((p) => [
         ...p,
@@ -95,16 +168,7 @@ export function ChatPanel() {
     if (!msg?.pendingAction) return;
     setMessages((p) => p.map((m, i) => (i === index ? { ...m, pendingStatus: "done" } : m)));
     try {
-      const res = await api.post<{ data: { executed: boolean; action?: ChatAction } }>(
-        "/actions/execute",
-        msg.pendingAction,
-      );
-      const executed = res.data.data.action ?? null;
-      // Прикріплюємо виконану дію до повідомлення — щоб увімкнувся банер «Відмінити».
-      setMessages((p) => p.map((m, i) => (i === index ? { ...m, action: executed } : m)));
-      qc.invalidateQueries({ queryKey: ["transactions"] });
-      qc.invalidateQueries({ queryKey: ["goals"] });
-      qc.invalidateQueries({ queryKey: ["dashboard"] });
+      await executeAction(msg.pendingAction);
     } catch {
       setMessages((p) => p.map((m, i) => (i === index ? { ...m, pendingStatus: "pending" } : m)));
     }
@@ -114,19 +178,25 @@ export function ChatPanel() {
     setMessages((p) => p.map((m, i) => (i === index ? { ...m, pendingStatus: "cancelled" } : m)));
   }
 
+  // Оновлення обраної дати в картці створення цілі (необов'язково).
+  function setPendingDeadline(index: number, deadline: string) {
+    setMessages((p) =>
+      p.map((m, i) =>
+        i === index && m.pendingAction
+          ? { ...m, pendingAction: { ...m.pendingAction, deadline: deadline || null } }
+          : m,
+      ),
+    );
+  }
+
   async function handleUndo() {
     setUndoing(true);
     try {
       await api.post("/actions/undo");
-      setMessages((p) =>
-        p.map((m) =>
-          m === [...p].reverse().find((x) => x.role === "assistant" && x.action)
-            ? { ...m, action: null }
-            : m,
-        ),
-      );
+      showUndo(null);
       qc.invalidateQueries({ queryKey: ["transactions"] });
       qc.invalidateQueries({ queryKey: ["goals"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
     } catch {
       /* ignore */
     } finally {
@@ -194,31 +264,73 @@ export function ChatPanel() {
 
               {messages.map((m, i) => (
                 <div key={i} className="space-y-2">
-                  <div className={cn("flex", m.role === "user" ? "justify-end" : "justify-start")}>
-                    <div
-                      className={cn(
-                        "max-w-[85%] whitespace-pre-wrap break-words rounded-2xl px-3 py-2 text-sm",
-                        m.role === "user"
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-muted text-foreground",
-                      )}
-                    >
-                      {m.role === "assistant" && m.intent && INTENT_LABELS[m.intent] && (
-                        <span className="mb-1 block text-xs text-muted-foreground">
-                          {INTENT_LABELS[m.intent]}
-                        </span>
-                      )}
-                      {m.content}
+                  {/* Бульбашка повідомлення (порожні відповіді-дії не показуємо) */}
+                  {(m.role === "user" || m.content?.trim()) && (
+                    <div className={cn("flex", m.role === "user" ? "justify-end" : "justify-start")}>
+                      <div
+                        className={cn(
+                          "max-w-[85%] break-words rounded-2xl px-3 py-2 text-sm",
+                          m.role === "user"
+                            ? "whitespace-pre-wrap bg-primary text-primary-foreground"
+                            : "bg-muted text-foreground",
+                        )}
+                      >
+                        {m.role === "assistant" && m.intent && INTENT_LABELS[m.intent] && (
+                          <span className="mb-1 block text-xs text-muted-foreground">
+                            {INTENT_LABELS[m.intent]}
+                          </span>
+                        )}
+                        {m.role === "assistant" ? <Markdown content={m.content} /> : m.content}
+                      </div>
                     </div>
-                  </div>
+                  )}
 
-                  {/* Підтвердження дії: так / ні */}
+                  {/* Чіп для дії, виконаної одразу (без підтвердження) */}
+                  {m.role === "assistant" && m.auto && (
+                    <div className="flex justify-start">
+                      <span
+                        className={cn(
+                          "inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs",
+                          m.auto === "ok"
+                            ? "bg-positive/10 text-positive"
+                            : "bg-negative/10 text-negative",
+                        )}
+                      >
+                        {m.auto === "ok" ? (
+                          <>
+                            <Check size={12} /> Виконано
+                          </>
+                        ) : (
+                          "Не вдалося виконати"
+                        )}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Підтвердження дії: створення цілі / видалення */}
                   {m.role === "assistant" && m.pendingAction && (
                     <div className="flex justify-start">
                       <div className="w-[90%] rounded-2xl border border-border bg-background p-3">
                         <p className="text-sm font-medium text-foreground">
                           {m.pendingAction.confirmText}
                         </p>
+
+                        {/* Необов'язкова дата для нової цілі */}
+                        {m.pendingAction.actionType === "create_goal" &&
+                          m.pendingStatus === "pending" && (
+                            <label className="mt-2.5 block">
+                              <span className="mb-1 block text-xs text-muted-foreground">
+                                Дедлайн (необов'язково)
+                              </span>
+                              <input
+                                type="date"
+                                value={m.pendingAction.deadline ?? ""}
+                                onChange={(e) => setPendingDeadline(i, e.target.value)}
+                                className="w-full rounded-lg border border-input bg-background px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                              />
+                            </label>
+                          )}
+
                         {m.pendingStatus === "pending" ? (
                           <div className="mt-2.5 flex gap-2">
                             <button
@@ -264,26 +376,31 @@ export function ChatPanel() {
               <div ref={bottomRef} />
             </div>
 
-            {/* Undo-банер */}
+            {/* Компактний тост undo — менший за картку, сам зникає */}
             <AnimatePresence>
-              {lastAction && (
+              {undo && (
                 <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: "auto", opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  className="overflow-hidden border-t border-amber-200/60 dark:border-amber-800/40 bg-amber-50/80 dark:bg-amber-900/20"
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 8 }}
+                  className="pointer-events-none absolute inset-x-0 bottom-20 z-20 flex justify-center px-4"
                 >
-                  <div className="flex items-center justify-between px-4 py-2.5">
-                    <span className="text-xs text-amber-700 dark:text-amber-400">
-                      Відмінити останню дію?
-                    </span>
+                  <div className="pointer-events-auto flex items-center gap-3 rounded-full border border-border bg-card px-3 py-1.5 shadow-lg">
+                    <span className="text-xs text-muted-foreground">Дію виконано</span>
                     <button
                       onClick={handleUndo}
                       disabled={undoing}
-                      className="flex items-center gap-1.5 rounded-lg bg-amber-100 dark:bg-amber-800/40 px-2.5 py-1 text-xs font-medium text-amber-700 dark:text-amber-400 hover:bg-amber-200 dark:hover:bg-amber-800/60 transition-colors disabled:opacity-50"
+                      className="flex items-center gap-1 text-xs font-medium text-primary hover:underline disabled:opacity-50"
                     >
                       <Undo2 size={12} />
                       {undoing ? "..." : "Відмінити"}
+                    </button>
+                    <button
+                      onClick={() => showUndo(null)}
+                      className="text-muted-foreground hover:text-foreground"
+                      aria-label="Закрити"
+                    >
+                      <X size={13} />
                     </button>
                   </div>
                 </motion.div>

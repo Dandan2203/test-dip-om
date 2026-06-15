@@ -56,11 +56,13 @@ export interface ChatMessage {
   action?: ChatAction | null;
   pendingAction?: PendingAction | null;
   pendingStatus?: "pending" | "done" | "cancelled";
+  // Статус дії, виконаної одразу (без підтвердження): ok | помилка.
+  auto?: "ok" | "err";
   timestamp: string;
 }
 
 export interface ChatAction {
-  actionType: "create" | "delete";
+  actionType: "create" | "delete" | "contribute";
   entityType: "transaction" | "goal";
   entityId: number;
 }
@@ -81,6 +83,8 @@ export interface PendingAction {
   targetAmount?: number;
   deadline?: string | null;
   confirmText: string;
+  // true лише для створення цілі та видалень; решта виконується одразу + undo.
+  requiresConfirm?: boolean;
 }
 
 export interface Anomaly {
