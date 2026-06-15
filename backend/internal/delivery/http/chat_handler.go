@@ -46,8 +46,13 @@ func NewChatHandler(
 	}
 }
 
+const (
+	maxChatMessageLen = 500 // максимум символів на один запит до чату
+	dailyChatLimit    = 50  // максимум повідомлень до чату на добу на користувача
+)
+
 type chatRequest struct {
-	Message string           `json:"message" binding:"required,max=2000"`
+	Message string           `json:"message" binding:"required,max=500"`
 	History []chatHistoryMsg `json:"history" binding:"max=10,dive"`
 }
 
@@ -82,12 +87,23 @@ type PendingAction struct {
 func (h *ChatHandler) Chat(c *gin.Context) {
 	var req chatRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		RespondError(c, http.StatusBadRequest, "INVALID_INPUT", err.Error())
+		RespondError(c, http.StatusBadRequest, "INVALID_INPUT",
+			fmt.Sprintf("повідомлення не може бути порожнім або довшим за %d символів", maxChatMessageLen))
 		return
 	}
 
 	ctx := c.Request.Context()
 	userID := middleware.UserIDFromContext(c)
+
+	// Денний ліміт повідомлень (захист бюджету AI). Атомарний інкремент рахує СПРОБУ
+	// до виклику ШІ — без гонок між паралельними запитами й з урахуванням невдалих викликів.
+	if h.chatLogRepo != nil {
+		if n, err := h.chatLogRepo.IncrementDailyUsage(ctx, userID); err == nil && n > dailyChatLimit {
+			RespondError(c, http.StatusTooManyRequests, "DAILY_LIMIT",
+				fmt.Sprintf("Денний ліміт %d повідомлень вичерпано. Спробуйте завтра.", dailyChatLimit))
+			return
+		}
+	}
 
 	txs, _, err := h.txRepo.List(ctx, userID, domain.TransactionFilter{Limit: 100, Offset: 0})
 	if err != nil {

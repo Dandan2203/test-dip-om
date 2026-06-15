@@ -310,9 +310,6 @@ export function TransactionsPage() {
                         <span className="text-base font-bold text-foreground">
                           {monthLabel(g.key)}
                         </span>
-                        <span className="ml-2 text-xs font-medium text-muted-foreground">
-                          · {g.items.length} оп.
-                        </span>
                       </td>
                       <td
                         colSpan={2}

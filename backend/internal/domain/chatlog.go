@@ -20,4 +20,7 @@ type ChatLog struct {
 type ChatLogRepository interface {
 	Record(ctx context.Context, l *ChatLog) error
 	History(ctx context.Context, userID int64, limit int) ([]ChatLog, error)
+	// IncrementDailyUsage атомарно збільшує лічильник звернень користувача за поточну
+	// добу і повертає НОВЕ значення — для надійного денного ліміту без гонок.
+	IncrementDailyUsage(ctx context.Context, userID int64) (int, error)
 }

@@ -55,3 +55,17 @@ func (r *ChatLogRepository) History(ctx context.Context, userID int64, limit int
 	}
 	return logs, nil
 }
+
+// IncrementDailyUsage атомарно інкрементує денний лічильник звернень і повертає
+// нове значення. UPSERT за (user_id, day) виключає гонку між паралельними запитами.
+func (r *ChatLogRepository) IncrementDailyUsage(ctx context.Context, userID int64) (int, error) {
+	const query = `
+		INSERT INTO chat_usage (user_id, day, count) VALUES ($1, current_date, 1)
+		ON CONFLICT (user_id, day) DO UPDATE SET count = chat_usage.count + 1
+		RETURNING count`
+	var n int
+	if err := r.db.GetContext(ctx, &n, query, userID); err != nil {
+		return 0, fmt.Errorf("repository: облік звернень за день: %w", err)
+	}
+	return n, nil
+}

@@ -25,6 +25,7 @@ const INTENT_LABELS: Record<string, string> = {
 };
 
 const UNDO_TIMEOUT = 8000;
+const MAX_MESSAGE_LEN = 500; // має збігатися з лімітом бекенда
 
 export function ChatPanel() {
   const { open, setOpen, width, setWidth } = useChatStore();
@@ -55,7 +56,7 @@ export function ChatPanel() {
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, loading]);
+  }, [messages, loading, undo]);
 
   // Перерахунок clamp ширини при зміні розміру вікна (стеля = 40% вікна).
   useEffect(() => {
@@ -149,14 +150,14 @@ export function ChatPanel() {
           setMessages((p) => p.map((m, i) => (i === p.length - 1 ? { ...m, auto: "err" } : m)));
         }
       }
-    } catch {
+    } catch (err: unknown) {
+      // Показуємо повідомлення бекенда (денний ліміт 429, задовге 400), інакше — загальне.
+      const msg =
+        (err as { response?: { data?: { error?: { message?: string } } } })
+          ?.response?.data?.error?.message ?? "Вибачте, ШІ-сервіс зараз недоступний.";
       setMessages((p) => [
         ...p,
-        {
-          role: "assistant",
-          content: "Вибачте, ШІ-сервіс зараз недоступний.",
-          timestamp: new Date().toISOString(),
-        },
+        { role: "assistant", content: msg, timestamp: new Date().toISOString() },
       ]);
     } finally {
       setLoading(false);
@@ -376,16 +377,16 @@ export function ChatPanel() {
               <div ref={bottomRef} />
             </div>
 
-            {/* Компактний тост undo — менший за картку, сам зникає */}
+            {/* Банер undo — у потоці (не перекриває останнє повідомлення), сам зникає */}
             <AnimatePresence>
               {undo && (
                 <motion.div
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 8 }}
-                  className="pointer-events-none absolute inset-x-0 bottom-20 z-20 flex justify-center px-4"
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  className="shrink-0 overflow-hidden border-t border-border bg-muted/40"
                 >
-                  <div className="pointer-events-auto flex items-center gap-3 rounded-full border border-border bg-card px-3 py-1.5 shadow-lg">
+                  <div className="flex items-center justify-center gap-3 px-4 py-2">
                     <span className="text-xs text-muted-foreground">Дію виконано</span>
                     <button
                       onClick={handleUndo}
@@ -407,27 +408,42 @@ export function ChatPanel() {
               )}
             </AnimatePresence>
 
-            <div className="flex gap-2 border-t border-border p-3">
-              <textarea
-                rows={1}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    send(input);
-                  }
-                }}
-                placeholder="Повідомлення..."
-                className="flex-1 resize-none rounded-xl border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-              <button
-                onClick={() => send(input)}
-                disabled={!input.trim() || loading}
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-40"
+            <div className="border-t border-border p-3">
+              <div className="flex gap-2">
+                <textarea
+                  rows={1}
+                  value={input}
+                  maxLength={MAX_MESSAGE_LEN}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      send(input);
+                    }
+                  }}
+                  placeholder="Повідомлення..."
+                  className="flex-1 resize-none rounded-xl border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+                <button
+                  onClick={() => send(input)}
+                  disabled={!input.trim() || loading}
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-40"
+                >
+                  <Send size={16} />
+                </button>
+              </div>
+              <div
+                className={cn(
+                  "mt-1 text-right text-[11px]",
+                  input.length >= MAX_MESSAGE_LEN
+                    ? "text-negative"
+                    : input.length > MAX_MESSAGE_LEN * 0.9
+                      ? "text-amber-500"
+                      : "text-muted-foreground",
+                )}
               >
-                <Send size={16} />
-              </button>
+                {input.length}/{MAX_MESSAGE_LEN}
+              </div>
             </div>
           </motion.aside>
         </>
