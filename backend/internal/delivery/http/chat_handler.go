@@ -79,8 +79,8 @@ type PendingAction struct {
 	TargetAmount    float64 `json:"targetAmount,omitempty"`
 	Deadline        *string `json:"deadline,omitempty"`
 	ConfirmText     string  `json:"confirmText"`
-	// RequiresConfirm — чи показувати «Так/Ні». true лише для створення цілі
-	// та видалень; решта дій виконуються одразу з можливістю undo.
+	// RequiresConfirm — чи показувати «Так/Ні». Усі AI-дії, що змінюють дані,
+	// потребують явного підтвердження користувача.
 	RequiresConfirm bool `json:"requiresConfirm"`
 }
 
@@ -304,6 +304,7 @@ func (h *ChatHandler) resolveAction(
 			TransactionType: action.TransactionType,
 			Description:     action.Description,
 			TransactionDate: action.TransactionDate,
+			RequiresConfirm: true,
 		}
 		if action.CategoryName != "" {
 			needle := strings.ToLower(action.CategoryName)
@@ -333,11 +334,12 @@ func (h *ChatHandler) resolveAction(
 			return nil, fmt.Sprintf("Не знайшов ціль «%s». Уточніть назву або спершу створіть ціль.", action.Title)
 		}
 		p := &PendingAction{
-			ActionType: "contribute_goal",
-			EntityType: "goal",
-			Amount:     action.Amount,
-			GoalID:     g.ID,
-			GoalTitle:  g.Title,
+			ActionType:      "contribute_goal",
+			EntityType:      "goal",
+			Amount:          action.Amount,
+			GoalID:          g.ID,
+			GoalTitle:       g.Title,
+			RequiresConfirm: true,
 		}
 		p.ConfirmText = fmt.Sprintf("Додати %s ₴ до цілі «%s»?", money(action.Amount), g.Title)
 		return p, ""
@@ -348,11 +350,12 @@ func (h *ChatHandler) resolveAction(
 			return nil, fmt.Sprintf("Не знайшов ціль «%s». Уточніть назву.", action.Title)
 		}
 		p := &PendingAction{
-			ActionType: "withdraw_goal",
-			EntityType: "goal",
-			Amount:     action.Amount,
-			GoalID:     g.ID,
-			GoalTitle:  g.Title,
+			ActionType:      "withdraw_goal",
+			EntityType:      "goal",
+			Amount:          action.Amount,
+			GoalID:          g.ID,
+			GoalTitle:       g.Title,
+			RequiresConfirm: true,
 		}
 		p.ConfirmText = fmt.Sprintf("Зняти %s ₴ з цілі «%s»?", money(action.Amount), g.Title)
 		return p, ""

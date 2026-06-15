@@ -87,7 +87,7 @@ export function ChatPanel() {
     if (action) undoTimer.current = setTimeout(() => setUndo(null), UNDO_TIMEOUT);
   }
 
-  // Виконує підтверджену/автоматичну дію: оновлює дані, тост undo, навігацію.
+  // Виконує підтверджену дію: оновлює дані, показує undo та за потреби навігує.
   async function executeAction(pending: PendingAction): Promise<ChatAction | null> {
     const res = await api.post<{ data: { executed: boolean; action?: ChatAction } }>(
       "/actions/execute",
@@ -127,7 +127,6 @@ export function ChatPanel() {
       }>("/chat", { message, history }, { timeout: 60000 });
       const { response, intent, pendingAction } = res.data.data;
       const needsConfirm = !!pendingAction?.requiresConfirm;
-      const autoExec = !!pendingAction && !needsConfirm;
 
       setMessages((p) => [
         ...p,
@@ -141,15 +140,6 @@ export function ChatPanel() {
         },
       ]);
 
-      // Дії без підтвердження (додати транзакцію, поповнити/зняти ціль) — одразу.
-      if (autoExec && pendingAction) {
-        try {
-          await executeAction(pendingAction);
-          setMessages((p) => p.map((m, i) => (i === p.length - 1 ? { ...m, auto: "ok" } : m)));
-        } catch {
-          setMessages((p) => p.map((m, i) => (i === p.length - 1 ? { ...m, auto: "err" } : m)));
-        }
-      }
     } catch (err: unknown) {
       // Показуємо повідомлення бекенда (денний ліміт 429, задовге 400), інакше — загальне.
       const msg =
@@ -286,29 +276,7 @@ export function ChatPanel() {
                     </div>
                   )}
 
-                  {/* Чіп для дії, виконаної одразу (без підтвердження) */}
-                  {m.role === "assistant" && m.auto && (
-                    <div className="flex justify-start">
-                      <span
-                        className={cn(
-                          "inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs",
-                          m.auto === "ok"
-                            ? "bg-positive/10 text-positive"
-                            : "bg-negative/10 text-negative",
-                        )}
-                      >
-                        {m.auto === "ok" ? (
-                          <>
-                            <Check size={12} /> Виконано
-                          </>
-                        ) : (
-                          "Не вдалося виконати"
-                        )}
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Підтвердження дії: створення цілі / видалення */}
+                  {/* Підтвердження AI-дії, що змінює дані */}
                   {m.role === "assistant" && m.pendingAction && (
                     <div className="flex justify-start">
                       <div className="w-[90%] rounded-2xl border border-border bg-background p-3">

@@ -56,8 +56,6 @@ export interface ChatMessage {
   action?: ChatAction | null;
   pendingAction?: PendingAction | null;
   pendingStatus?: "pending" | "done" | "cancelled";
-  // Статус дії, виконаної одразу (без підтвердження): ok | помилка.
-  auto?: "ok" | "err";
   timestamp: string;
 }
 
@@ -83,8 +81,8 @@ export interface PendingAction {
   targetAmount?: number;
   deadline?: string | null;
   confirmText: string;
-  // true лише для створення цілі та видалень; решта виконується одразу + undo.
-  requiresConfirm?: boolean;
+  // true для всіх AI-дій, що змінюють дані.
+  requiresConfirm: boolean;
 }
 
 export interface Anomaly {

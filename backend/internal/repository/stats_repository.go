@@ -74,7 +74,7 @@ func (r *StatsRepository) RecentTransactions(ctx context.Context, userID int64, 
 }
 
 func (r *StatsRepository) ExportRows(ctx context.Context, userID int64, f domain.TransactionFilter) ([]domain.TransactionExportRow, error) {
-	cond := []string{"t.user_id = $1"}
+	cond := []string{"t.user_id = $1", "t.deleted_at IS NULL"}
 	args := []any{userID}
 
 	if f.From != nil {
@@ -88,6 +88,10 @@ func (r *StatsRepository) ExportRows(ctx context.Context, userID int64, f domain
 	if f.Type != nil {
 		args = append(args, string(*f.Type))
 		cond = append(cond, fmt.Sprintf("t.type = $%d", len(args)))
+	}
+	if f.CategoryID != nil {
+		args = append(args, *f.CategoryID)
+		cond = append(cond, fmt.Sprintf("t.category_id = $%d", len(args)))
 	}
 
 	query := fmt.Sprintf(`

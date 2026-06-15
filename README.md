@@ -1,46 +1,53 @@
 # FinAgent
 
-Сервіс контролю особистих фінансів із вбудованим ШІ-асистентом: користувач веде транзакції, цілі та бюджет вручну або керує ними природною мовою через чат. ШІ також авто-категоризує транзакції та шукає аномалії у витратах.
+FinAgent — вебзастосунок для керування особистими фінансами з AI-асистентом. Користувач веде транзакції, категорії та фінансові цілі, переглядає аналітику й ставить запитання про власні фінансові дані природною мовою.
+
+## Основні можливості
+
+- реєстрація, вхід і редагування профілю;
+- CRUD транзакцій, фільтрація та серверна пагінація;
+- системні й користувацькі категорії;
+- зведення доходів і витрат, графіки, дашборд та CSV-експорт;
+- фінансові цілі й відстеження прогресу;
+- окремий AI-ендпоїнт для пропозиції категорії за описом;
+- AI-чат про баланс, витрати, категорії та цілі;
+- прості сценарії «що, якби»;
+- виявлення нетипових витрат.
+
+AI-асистент не змінює дані самостійно: кожна запропонована ним дія потребує підтвердження користувача.
+
+## Архітектура
+
+- `frontend` — інтерфейс React;
+- `backend` — REST API, автентифікація та бізнес-логіка на Go;
+- `financial-ai-agent` — окремий FastAPI-сервіс для AI-запитів;
+- PostgreSQL — користувачі, транзакції, категорії, цілі, історія чату та дій.
+
+Деталі: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), фактичний стан функцій: [docs/FEATURE_AUDIT.md](docs/FEATURE_AUDIT.md).
 
 ## Стек
-- **Backend** — Go (Clean Architecture: domain → usecase → repository → delivery), Gin, PostgreSQL, JWT, AES-256-GCM.
-- **AI-сервіс** — Python (FastAPI), Anthropic Claude Haiku 4.5, нативний tool-use.
-- **Frontend** — React + TypeScript + Vite.
-- **Інфраструктура** — Docker Compose, інтеграція Monobank.
 
-Деталі — [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Метрики — [docs/METRICS.md](docs/METRICS.md).
+Go, Gin, PostgreSQL, Python, FastAPI, Anthropic API, React, TypeScript, Vite, Docker Compose.
 
-## Запуск (Docker)
-1. `cp .env.example .env`
-2. Заповніть у `.env` усі обов'язкові змінні:
-   - `JWT_SECRET` — довгий випадковий рядок
-   - `ANTHROPIC_API_KEY` — ключ Anthropic
-   - `ENCRYPTION_KEY` — довгий випадковий рядок (зміна робить наявні Mono-токени нечитними)
-   - `INTERNAL_API_TOKEN` — спільний секрет бекенда й AI-сервісу (будь-який довгий рядок)
-3. `docker compose up -d --build`
-4. Фронтенд — http://localhost, API — http://localhost:8080
+## Запуск через Docker
 
-AI-сервіс назовні не публікується — доступний лише бекенду по внутрішній мережі зі спільним секретом `INTERNAL_API_TOKEN`.
+```bash
+cp .env.example .env
+# заповніть секрети у .env
+docker compose up -d --build
+```
 
-## Локальний запуск (без Docker)
-- PostgreSQL на `:5433`.
-- **Backend**: у `backend/.env` — `DATABASE_URL`, `JWT_SECRET`, `ENCRYPTION_KEY`, `AI_INTERNAL_TOKEN`; `go run ./cmd`.
-- **AI**: у `financial-ai-agent/.env` — `ANTHROPIC_API_KEY`, `INTERNAL_API_TOKEN`; `uvicorn main:app`.
-- **Frontend**: `cd frontend && npm install && npm run dev`.
+Інтерфейс: `http://localhost`, API: `http://localhost:8080`.
 
-`AI_INTERNAL_TOKEN` (backend) і `INTERNAL_API_TOKEN` (AI-сервіс) **мають збігатися**.
+## Перевірка
 
-## Тести та CI
-- **Backend (Go)**: `cd backend && go test ./...` — юзкейси, AES-крипто, JWT, retry-клієнт AI, rate-limit, зіставлення цілей.
-- **AI-сервіс (Python)**: `cd financial-ai-agent && pytest tests/` — read-інструменти, конвертер дій, детектор аномалій (без мережі).
-- **Frontend**: `cd frontend && npm run lint && npm run build`.
-- **CI**: [.github/workflows/ci.yml](.github/workflows/ci.yml) — три паралельні джоби (Go build+vet+test -race, Python pytest, React lint+build) на кожен push/PR.
+```bash
+cd backend && go test ./...
+cd ../financial-ai-agent && python -m pytest tests -v
+cd ../frontend && npm ci && npm run lint && npm run build
+cd .. && docker compose config
+```
 
-## Оцінка якості (eval)
-Піднятий AI-сервіс + `python eval/run_eval.py` — міряє точність інтентів і захоплення дій. Див. [eval/README.md](eval/README.md).
+## Додаткові модулі
 
-## Безпека й комплаєнс (стисло)
-- ШІ-чат не дає персональних інвестиційних порад (guardrail у системному промті) і додає дисклеймер до фінансових порад.
-- Будь-яка зміна даних через чат — лише після підтвердження користувача (human-in-the-loop), із логуванням для undo.
-- AI-сервіс приватний (shared-secret, порт закрито). Секрети обов'язкові (fail-fast). Mono-токени — AES-256-GCM.
-- Деталі — [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) §Безпека.
+Інтеграція Monobank, AI-категоризація, налаштовуване розташування віджетів, eval-набір і CI є додатковими або частково інтегрованими модулями, а не центральними функціями дипломного проєкту.
